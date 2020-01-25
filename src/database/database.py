@@ -45,9 +45,21 @@ class Database():
             self.users_saved = []
 
     def find_chat(self, chat_id):
-        query = f"""SELECT * FROM chats WHERE chat_id={chat_id} """
-        if self.cursor.execute(query) == 0:
+        query = """
+                SELECT
+                    a.id,
+                    a.chat_id,
+                    a.title,
+                    a.chat_type
+                FROM
+                    chats AS a
+                WHERE
+                    a.chat_id=%s;
+                """
+
+        if self.cursor.execute(query, (chat_id,)) == 0:
             return None
+
         chat_db = self.cursor.fetchone()
         return Chat(
             chat_id=chat_db[1],
@@ -56,9 +68,23 @@ class Database():
         )
 
     def find_user(self, telegram_id):
-        query = f"""SELECT * FROM users WHERE telegram_id={telegram_id} """
-        if self.cursor.execute(query) == 0:
+        query = """
+                SELECT
+                    a.id,
+                    a.telegram_id,
+                    a.is_bot,
+                    a.first_name,
+                    a.last_name,
+                    a.username
+                FROM
+                    users AS a
+                WHERE
+                    a.telegram_id=%s;
+                """
+
+        if self.cursor.execute(query, (telegram_id,)) == 0:
             return None
+
         user_db = self.cursor.fetchone()
         return User(
             telegram_id=user_db[1],
@@ -66,65 +92,100 @@ class Database():
             first_name=user_db[3],
             last_name=user_db[4],
             username=user_db[5]
-
         )
 
     def insert_chat(self, chat):
-        query = f"""INSERT INTO chats (chat_id, title, chat_type)
-                    VALUES ({int(chat.chat_id)}, "{chat.title}", "{chat.chat_type}");"""
+        query = """
+                INSERT INTO
+                    chats (chat_id, title, chat_type)
+                VALUES
+                    (%s, %s, %s);
+                """
         print(chat.chat_id, chat.title, chat.chat_type)
-        self.cursor.execute(query)
+        self.cursor.execute(query, (chat.chat_id, chat.title, chat.chat_type,))
         self.db.commit()
 
     def insert_user(self, user):
-        query = f"""INSERT INTO users (telegram_id, is_bot, first_name, last_name, username)
-                    VALUES ({user.telegram_id}, "{int(user.is_bot)}", "{user.first_name}", "{user.last_name}", "{user.username}");"""
-        self.cursor.execute(query)
+        query = """
+                INSERT INTO
+                    users (telegram_id, is_bot, first_name, last_name, username)
+                VALUES
+                    (%s, %s, %s, %s, %s);
+                """
+        self.cursor.execute(query,
+                            (user.telegram_id, user.is_bot, user.first_name,
+                             user.last_name, user.username,))
         self.db.commit()
 
     def find_experience_points(self, user_telegram_id, chat_id):
-        query = f"""SELECT experience_points FROM experiences 
-        WHERE user_telegram_id = {int(user_telegram_id)} AND chat_id = {int(chat_id)};"""
-        self.cursor.execute(query)
+        query = """
+                SELECT
+                    a.experience_points
+                FROM
+                    experiences AS a
+                WHERE
+                    a.user_telegram_id = %s AND
+                    a.chat_id = %s;
+                """
+
+        self.cursor.execute(query, (user_telegram_id, chat_id,))
         experience_points = self.cursor.fetchone()
-        if experience_points:
-            return experience_points[0]
-        else:
-            return 0
+        return experience_points[0] if experience_points else 0
 
     def add_user_experience(self, user_telegram_id, experience, chat_id):
         current_experience_points = self.find_experience_points(
             user_telegram_id, chat_id)
         new_experience_points = current_experience_points + experience
         if current_experience_points == 0:
-            query = f"""INSERT INTO experiences (user_telegram_id, experience_points, chat_id)
-                        VALUES ({int(user_telegram_id)}, {int(new_experience_points)}, {int(chat_id)});"""
+            query = """
+                    INSERT INTO
+                        experiences (experience_points, user_telegram_id, chat_id)
+                    VALUES
+                        (%s, %s, %s);
+                    """
         else:
-            query = f"""UPDATE experiences SET experience_points = {int(new_experience_points)}
-                        WHERE user_telegram_id = {int(user_telegram_id)} AND 
-                        chat_id = {int(chat_id)};"""
+            query = """
+                    UPDATE
+                        experiences
+                    SET
+                        experience_points = %s
+                    WHERE
+                        user_telegram_id = %s AND
+                        chat_id = %s;
+                    """
 
-        self.cursor.execute(query)
+        self.cursor.execute(query, (experience_points, user_telegram_id, chat_id,))
         self.db.commit()
 
     def get_experiences(self, chat_id, amount=10):
-        query = f"""SELECT u.first_name, u.last_name, u.username, e.experience_points
-                    FROM experiences AS e
-                    INNER JOIN chats AS c
-                    ON e.chat_id = c.chat_id 
-                    INNER JOIN users AS u
-                    ON e.user_telegram_id = u.telegram_id
-                    WHERE e.chat_id = {chat_id}
-                    AND u.is_bot = 0
-                    ORDER BY e.experience_points DESC
-                    LIMIT {amount}"""
-        self.cursor.execute(query)
+        query = """
+                SELECT
+                    u.first_name,
+                    u.last_name,
+                    u.username,
+                    e.experience_points
+                FROM
+                    experiences AS e
+                INNER JOIN
+                    chats AS c ON e.chat_id = c.chat_id
+                INNER JOIN
+                    users AS u ON e.user_telegram_id = u.telegram_id
+                WHERE
+                    e.chat_id = {chat_id} AND
+                    u.is_bot = 0
+                ORDER BY
+                    e.experience_points DESC
+                LIMIT
+                    %s;
+                """
+
+        self.cursor.execute(query, (amount,))
         experiences_db = self.cursor.fetchall()
-        response = "Experiẽncias: \n\n"
+        response = "Experiências: \n\n"
         for experience in experiences_db:
             first_name = experience[0]
             last_name = experience[1]
             username = experience[2]
             experience = experience[3]
-            response += f"{first_name} {last_name} ({experience})\n"
+            response += f"""{first_name} {last_name} ({experience})\n"""
         return response
